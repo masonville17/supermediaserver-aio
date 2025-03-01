@@ -1,0 +1,329 @@
+version: '3.3'
+
+services:
+  radarr:
+    container_name: radarr
+    ports:
+      - 7878:7878
+    volumes:
+      - /home/mason/mediashare/radarrconfig:/config
+      - /home/mason/mediashare/movies:/movies
+      - /home/mason/mediashare/downloads:/downloads
+    environment:
+      - PUID=1500
+      - PGID=1500
+      - TZ=America/Denver
+    image: linuxserver/radarr
+    restart:
+      unless-stopped
+  sonarr:
+    container_name: sonarr
+    restart: unless-stopped
+    ports:
+      - 8989:8989
+    volumes:
+      - /home/mason/mediashare/sonarrconfig:/config
+      - /home/mason/mediashare/tv:/tv
+      - /home/mason/mediashare/downloads:/downloads
+    environment:
+      - PUID=1400
+      - PGID=1400
+      - TZ=America/Denver
+    image: linuxserver/sonarr
+  homeassistant:
+    container_name: homeassistant
+    image: ghcr.io/home-assistant/home-assistant:latest
+    volumes:
+      - /home/mason/mediashare/hassconf:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /home/mason/mediashare/:/media
+    restart:
+      unless-stopped
+    privileged: true
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      - PUID=1013
+      - PGID=1013
+      - TZ=America/Denver
+    volumes:
+      - /home/mason/mediashare/bazconfig:/config
+      - /home/mason/mediashare/movies:/movies #optional
+      - /path/to/tv:/tv #optional
+    ports:
+      - 6767:6767
+    restart: unless-stopped
+  proxman:
+    image: 'jc21/nginx-proxy-manager:latest'
+    restart: unless-stopped
+    ports:
+      - '8222:80'
+      - '8333:81'
+      - '8444:443'
+    volumes:
+      - /home/mason/mediashare/proxmandata:/data
+      - /home/mason/mediashare/letsencrypt:/etc/letsencrypt
+  jackett:
+    container_name: jackett
+    restart: unless-stopped
+    ports:
+      - 9117:9117
+    volumes:
+      - /home/mason/mediashare/jackettconfig:/config
+    environment:
+      - PUID=1300
+      - PGID=1300
+      - TZ=America/Denver
+    image: linuxserver/jackett
+  requestrr:
+    image: lscr.io/linuxserver/requestrr:latest
+    container_name: requestrr
+    environment:
+      - PUID=1022
+      - PGID=1022
+      - TZ=America/Denver
+    volumes:
+      - /home/mason/mediashare/reqconfig:/config
+    ports:
+      - 4545:4545
+    restart: unless-stopped
+
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus
+    volumes:
+      - /home/mason/mediashare/prome/:/etc/prometheus/
+      - /home/mason/mediashare/promconfig:/prometheus/
+    ports:
+      - 9090:9090
+  grafana:
+    container_name: grafana
+    image: grafana/grafana
+    ports:
+      - 3000:3000
+    environment:
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - /home/mason/mediashare/graflib:/var/lib/grafana
+      - /home/mason/mediashare/grafconf:/etc/grafana/provisioning
+  deluge:
+    image: linuxserver/deluge
+    container_name: deluge
+    environment:
+      - PUID=1200
+      - PGID=1200
+      - TZ=America/Denver
+      - UMASK_SET=000 #optional
+      - DELUGE_LOGLEVEL=error #optional
+    volumes:
+      - /home/mason/mediashare/delugeconfig:/config
+      - /home/mason/mediashare/downloads:/downloads
+    restart: unless-stopped
+  samba:
+    image: dperson/samba
+    ports:
+      - 137:137
+      - 138:138
+      - 139:139
+      - 445:445
+    volumes:
+      - /home/mason/mediashare:/mount
+    command: '-s "Share;/mount;yes;no;no;1800;1800"'
+    restart:
+      unless-stopped
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: always
+    user: ${PUID:-1033}
+    volumes:
+      - "/home/mason/mediashare/vaultwarden/data/:/data"
+    environment:
+      - WEBSOCKET_ENABLED=true
+    networks:
+      - default
+  calibre_web:
+    image: ghcr.io/linuxserver/calibre-web:latest
+    container_name: calibre_web
+    restart: unless-stopped
+    environment:
+      - PUID=2024
+      - PGID=2024
+      - TZ=America/Denver
+      - "DOCKER_MODS=linuxserver/calibre-web:calibre"
+    volumes:
+      - /home/mason/mediashare/calibreconfig:/config
+      - /home/mason/mediashare/calibrebooks:/books
+    networks:
+      - default
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    command: --schedule "0 10 3 * * *" --cleanup
+    labels:
+      - traefik.enable=false
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/mason/mediashare/watchtowerconf/config/:/config
+      - /home/mason/mediashare/watchtowerdockerconf/docker-config.json:/config.json
+  aria2:
+      image: ndthuan/aria2-alpine
+      volumes:
+          - /home/mason/mediashare:/downloads
+      ports:
+          - 6800:6800
+      restart:
+        unless-stopped
+  httpd:
+      image: busybox
+      volumes:
+          - /home/mason/mediashare/ariaweb:/usr/html
+      ports:
+          - 8678:80
+      command: /bin/busybox httpd -f -p 80 -h /usr/html
+      restart:
+        unless-stopped
+  ombi:
+    image: lscr.io/linuxserver/ombi:latest
+    container_name: ombi
+    environment:
+      - PUID=1020
+      - PGID=1020
+      - TZ=America/Denver
+      - BASE_URL=/ombi #optional
+    volumes:
+      - /home/mason/mediashare/ombiconf:/config
+    ports:
+      - 3579:3579
+    restart: unless-stopped
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    environment:
+      - LOG_LEVEL=debug
+      - TZ=America/Denver
+    ports:
+      - 6055:5055
+    volumes:
+      - /home/mason/mediashare/jellyseerconfig:/app/config
+    restart: unless-stopped
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=1069
+      - PGID=1069
+      - TZ=Etc/UTC
+    volumes:
+      - /home/mason/mediashare/prolarrconf:/config
+    ports:
+      - 9696:9696
+    restart: unless-stopped
+  jellyfin:
+    image: jellyfin/jellyfin
+    volumes:
+      - /home/mason/mediashare/tv:/data/tv
+      - /home/mason/mediashare/movies:/data/movies
+      - /home/mason/mediashare/music:/data/music
+    ports:
+      - 8096:8096
+      - 8920:8920 #optional
+      - 7359:7359/udp #optional
+      - 1900:1900/udp #optional
+    restart:
+      unless-stopped
+  homarr:
+    image: ajnart/homarr
+    volumes:
+      - /home/mason/mediashare/homarrconfig:/config
+    ports:
+      - 7575:7575
+    restart:
+      unless-stopped
+  portainer:
+    image: portainer/portainer-ce
+    ports:
+      - 9443:9443
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/mason/mediashare/portainerdata:/data
+    restart:
+      unless-stopped
+  overseerr:
+    image: lscr.io/linuxserver/overseerr:latest
+    container_name: overseerr
+    environment:
+      - PUID=1080
+      - PGID=1080
+      - TZ=Etc/UTC
+    volumes:
+      - /home/mason/mediashare/overseerconfig:/config
+    ports:
+      - 5055:5055
+    restart: unless-stopped
+  nextcloud:
+    image: nextcloud
+    volumes:
+      - /home/mason/mediashare/nextcloud:/var/www/html
+    ports:
+      - 8044:80
+    restart:
+      unless-stopped
+  bitwarden:
+    image: bitwardenrs/server
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - /home/mason/mediashare/bitwarden:/data
+    restart:
+      unless-stopped
+  openvpn:
+    image: dperson/openvpn-client
+    networks:
+      - vpn
+    cap_add:
+      - net_admin
+    devices:
+      - /dev/net/tun
+    restart: unless-stopped
+    volumes:
+      - /home/mason/mediashare/vpnconfig:/vpn
+    command: '-r 192.168.1.0/24'  # replace with your local network
+
+  qbittorrent:
+    image: linuxserver/qbittorrent
+    networks:
+      - vpn
+      - default
+    depends_on:
+      - openvpn
+    environment:
+      - WEBUI_PORT=8080
+    ports:
+      - 8080:8080
+    volumes:
+      - /home/mason/mediashare/qbittorrent:/config
+      - /home/mason/mediashare/downloads:/downloads
+
+  tor:
+    image: osminogin/tor-simple
+    networks:
+      - vpn
+    ports:
+      - 9050:9050
+
+  zeronet:
+    image: nofish/zeronet
+    networks:
+      - vpn
+    ports:
+      - 43110:43110
+      - 15441:15441
+networks:
+  vpn:
+    driver: bridge
+  default:
+    driver: bridge
